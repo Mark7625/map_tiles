@@ -120,8 +120,7 @@ def fetch_latest_osrs_cache_version():
 
 def fetch_osrs_cache_versions():
     """
-    Returns a list of OSRS cache versions with upload timestamp
-    using the OpenRS2 JSON API instead of HTML scraping.
+    Returns a list of OSRS cache versions using the OpenRS2 JSON API.
     """
     response = requests.get(f"{CACHES_BASE_URL}/caches.json")
     response.raise_for_status()
@@ -134,8 +133,14 @@ def fetch_osrs_cache_versions():
         if cache.get("game") != "oldschool":
             continue
 
+        timestamp_str = cache.get("timestamp")
+
+        # Skip caches without timestamps
+        if not timestamp_str:
+            continue
+
         timestamp = datetime.fromisoformat(
-            cache["timestamp"].replace("Z", "+00:00")
+            timestamp_str.replace("Z", "+00:00")
         )
 
         cache_id = cache["id"]
@@ -152,7 +157,7 @@ def fetch_osrs_cache_versions():
             "links": {
                 "base": f"{CACHES_BASE_URL}/caches/runescape/{cache_id}",
                 "cache": f"{CACHES_BASE_URL}/caches/runescape/{cache_id}/disk.zip",
-                "xteas": f"{CACHES_BASE_URL}/caches/runescape/{cache_id}/keys.json",
+                "xteas": f"{CACHES_BASE_URL}/caches/runescape/{cache_id}/keys.json"
             },
             "build(s)": builds
         }
