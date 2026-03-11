@@ -4,9 +4,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.BiConsumer;
 import javax.imageio.ImageIO;
 
@@ -17,95 +15,105 @@ import net.runelite.cache.util.XteaKeyManager;
 
 public class Main
 {
-	private record MapOption(String name, BiConsumer<MapImageDumper, Boolean> setter) {}
+    private static class MapOption
+    {
+        String name;
+        BiConsumer<MapImageDumper, Boolean> setter;
 
-	private static final List<MapOption> mapOptions = List.of(
-		new MapOption("renderMap", MapImageDumper::setRenderMap),
-		new MapOption("renderObjects", MapImageDumper::setRenderObjects),
-		new MapOption("renderIcons", MapImageDumper::setRenderIcons),
-		new MapOption("renderWalls", MapImageDumper::setRenderWalls),
-		new MapOption("renderOverlays", MapImageDumper::setRenderOverlays),
-		new MapOption("renderLabels", MapImageDumper::setRenderLabels),
-		new MapOption("transparency", MapImageDumper::setTransparency)
-	);
+        MapOption(String name, BiConsumer<MapImageDumper, Boolean> setter)
+        {
+            this.name = name;
+            this.setter = setter;
+        }
+    }
 
-	public static void main(String[] args) throws IOException
-	{
-		Map<String, String> cmd = parseArgs(args);
+    private static final List<MapOption> mapOptions = Arrays.asList(
+        new MapOption("renderMap", MapImageDumper::setRenderMap),
+        new MapOption("renderObjects", MapImageDumper::setRenderObjects),
+        new MapOption("renderIcons", MapImageDumper::setRenderIcons),
+        new MapOption("renderWalls", MapImageDumper::setRenderWalls),
+        new MapOption("renderOverlays", MapImageDumper::setRenderOverlays),
+        new MapOption("renderLabels", MapImageDumper::setRenderLabels),
+        new MapOption("transparency", MapImageDumper::setTransparency)
+    );
 
-		String cacheDirectory = cmd.get("cachedir");
-		String xteaJSONPath = cmd.get("xteapath");
-		String outputDirectory = cmd.get("outputdir");
+    public static void main(String[] args) throws IOException
+    {
+        Map<String, String> cmd = parseArgs(args);
 
-		if (cacheDirectory == null || xteaJSONPath == null || outputDirectory == null)
-		{
-			System.err.println("Required arguments:");
-			System.err.println("--cachedir <path> --xteapath <path> --outputdir <path>");
-			System.exit(1);
-		}
+        String cacheDirectory = cmd.get("cachedir");
+        String xteaJSONPath = cmd.get("xteapath");
+        String outputDirectory = cmd.get("outputdir");
 
-		XteaKeyManager xteaKeyManager = new XteaKeyManager();
-		try (FileInputStream fin = new FileInputStream(xteaJSONPath))
-		{
-			xteaKeyManager.loadKeys(fin);
-		}
+        if (cacheDirectory == null || xteaJSONPath == null || outputDirectory == null)
+        {
+            System.err.println("Required arguments:");
+            System.err.println("--cachedir <path> --xteapath <path> --outputdir <path>");
+            System.exit(1);
+        }
 
-		File base = new File(cacheDirectory);
-		File outDir = new File(outputDirectory);
-		outDir.mkdirs();
+        XteaKeyManager xteaKeyManager = new XteaKeyManager();
+        try (FileInputStream fin = new FileInputStream(xteaJSONPath))
+        {
+            xteaKeyManager.loadKeys(fin);
+        }
 
-		try (Store store = new Store(base))
-		{
-			store.load();
+        File base = new File(cacheDirectory);
+        File outDir = new File(outputDirectory);
+        outDir.mkdirs();
 
-			MapImageDumper dumper = new MapImageDumper(store, xteaKeyManager);
+        try (Store store = new Store(base))
+        {
+            store.load();
 
-			for (MapOption option : mapOptions)
-			{
-				if (cmd.containsKey(option.name()))
-				{
-					boolean value = Boolean.parseBoolean(cmd.get(option.name()));
-					option.setter().accept(dumper, value);
-				}
-			}
+            MapImageDumper dumper = new MapImageDumper(store, xteaKeyManager);
 
-			dumper.load();
+            for (MapOption option : mapOptions)
+            {
+                if (cmd.containsKey(option.name))
+                {
+                    boolean value = Boolean.parseBoolean(cmd.get(option.name));
+                    option.setter.accept(dumper, value);
+                }
+            }
 
-			for (int i = 0; i < Region.Z; i++)
-			{
-				BufferedImage image = dumper.drawMap(i);
+            dumper.load();
 
-				File imageFile = new File(outDir, "img-" + i + ".png");
+            for (int i = 0; i < Region.Z; i++)
+            {
+                BufferedImage image = dumper.drawMap(i);
 
-				ImageIO.write(image, "png", imageFile);
-				System.out.println("Wrote image " + imageFile);
-			}
-		}
-	}
+                File imageFile = new File(outDir, "img-" + i + ".png");
 
-	private static Map<String, String> parseArgs(String[] args)
-	{
-		Map<String, String> map = new HashMap<>();
+                ImageIO.write(image, "png", imageFile);
+                System.out.println("Wrote image " + imageFile);
+            }
+        }
+    }
 
-		for (int i = 0; i < args.length; i++)
-		{
-			String arg = args[i];
+    private static Map<String, String> parseArgs(String[] args)
+    {
+        Map<String, String> map = new HashMap<>();
 
-			if (arg.startsWith("--"))
-			{
-				String key = arg.substring(2);
+        for (int i = 0; i < args.length; i++)
+        {
+            String arg = args[i];
 
-				if (i + 1 < args.length && !args[i + 1].startsWith("--"))
-				{
-					map.put(key, args[++i]);
-				}
-				else
-				{
-					map.put(key, "true");
-				}
-			}
-		}
+            if (arg.startsWith("--"))
+            {
+                String key = arg.substring(2);
 
-		return map;
-	}
+                if (i + 1 < args.length && !args[i + 1].startsWith("--"))
+                {
+                    map.put(key, args[++i]);
+                }
+                else
+                {
+                    map.put(key, "true");
+                }
+            }
+        }
+
+        return map;
+    }
 }
