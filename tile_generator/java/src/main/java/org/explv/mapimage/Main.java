@@ -4,24 +4,23 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 import javax.imageio.ImageIO;
+
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.MapImageDumper;
 import net.runelite.cache.fs.Store;
 import net.runelite.cache.region.Region;
 import net.runelite.cache.util.XteaKeyManager;
+
 import org.antlr.v4.runtime.misc.Pair;
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
 
 @Slf4j
-public class Main {
+public class Main
+{
 	private static final List<Pair<String, BiConsumer<MapImageDumper, Boolean>>> mapOptions = List.of(
 		new Pair<>("renderMap", MapImageDumper::setRenderMap),
 		new Pair<>("renderObjects", MapImageDumper::setRenderObjects),
@@ -32,33 +31,20 @@ public class Main {
 		new Pair<>("transparency", MapImageDumper::setTransparency)
 	);
 
-	public static void main(String[] args) throws IOException {
-		Options options = new Options();
-		options.addOption(Option.builder().longOpt("cachedir").hasArg().required().build());
-		options.addOption(Option.builder().longOpt("xteapath").hasArg().required().build());
-		options.addOption(Option.builder().longOpt("outputdir").hasArg().required().build());
+	public static void main(String[] args) throws IOException
+	{
+		Map<String, String> cmd = parseArgs(args);
 
-		// read in custom render options, runelite doesn't let you set these by default
-		for (Pair<String, BiConsumer<MapImageDumper, Boolean>> mapOption : mapOptions) {
-			options.addOption(Option.builder().longOpt(mapOption.a).hasArg().build());
-		}
+		final String cacheDirectory = cmd.get("cachedir");
+		final String xteaJSONPath = cmd.get("xteapath");
+		final String outputDirectory = cmd.get("outputdir");
 
-		CommandLineParser parser = new DefaultParser();
-		CommandLine cmd;
-		try
+		if (cacheDirectory == null || xteaJSONPath == null || outputDirectory == null)
 		{
-			cmd = parser.parse(options, args);
+			System.err.println("Required arguments:");
+			System.err.println("--cachedir <path> --xteapath <path> --outputdir <path>");
+			System.exit(1);
 		}
-		catch (ParseException ex)
-		{
-			System.err.println("Error parsing command line options: " + ex.getMessage());
-			System.exit(-1);
-			return;
-		}
-
-		final String cacheDirectory = cmd.getOptionValue("cachedir");
-		final String xteaJSONPath = cmd.getOptionValue("xteapath");
-		final String outputDirectory = cmd.getOptionValue("outputdir");
 
 		XteaKeyManager xteaKeyManager = new XteaKeyManager();
 		try (FileInputStream fin = new FileInputStream(xteaJSONPath))
@@ -76,15 +62,14 @@ public class Main {
 
 			MapImageDumper dumper = new MapImageDumper(store, xteaKeyManager);
 
-			// apply custom render options
-			for (Pair<String, BiConsumer<MapImageDumper, Boolean>> mapOption : mapOptions) {
-				if (cmd.hasOption(mapOption.a)) {
-					String option = cmd.getOptionValue(mapOption.a);
-					if (option.equalsIgnoreCase("true")) {
-						mapOption.b.accept(dumper, true);
-					} else {
-						mapOption.b.accept(dumper, false);
-					}
+			// Apply custom render options
+			for (Pair<String, BiConsumer<MapImageDumper, Boolean>> mapOption : mapOptions)
+			{
+				if (cmd.containsKey(mapOption.a))
+				{
+					String option = cmd.get(mapOption.a);
+					boolean value = Boolean.parseBoolean(option);
+					mapOption.b.accept(dumper, value);
 				}
 			}
 
@@ -100,5 +85,31 @@ public class Main {
 				log.info("Wrote image {}", imageFile);
 			}
 		}
+	}
+
+	private static Map<String, String> parseArgs(String[] args)
+	{
+		Map<String, String> map = new HashMap<>();
+
+		for (int i = 0; i < args.length; i++)
+		{
+			String arg = args[i];
+
+			if (arg.startsWith("--"))
+			{
+				String key = arg.substring(2);
+
+				if (i + 1 < args.length && !args[i + 1].startsWith("--"))
+				{
+					map.put(key, args[++i]);
+				}
+				else
+				{
+					map.put(key, "true");
+				}
+			}
+		}
+
+		return map;
 	}
 }
