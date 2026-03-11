@@ -7,7 +7,6 @@ import json
 import logging
 import math
 import os
-import re
 import shutil
 import subprocess
 import zipfile
@@ -22,7 +21,6 @@ import concurrent.futures
 import numpy as np
 import pyvips
 import requests
-from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw
 from skimage.metrics import structural_similarity
 
@@ -122,57 +120,44 @@ def fetch_latest_osrs_cache_version():
 
 def fetch_osrs_cache_versions():
     """
-        Returns a list of OSRS cache version with upload timestamp
-        by scaping https://archive.openrs2.org
+    Returns a list of OSRS cache versions with upload timestamp
+    using the OpenRS2 JSON API instead of HTML scraping.
     """
-    caches = requests.get(CACHES_BASE_URL + "/caches", allow_redirects=True)
-    soup = BeautifulSoup(caches.content, features="html.parser")
-    cache_table = soup.find('table')
-    table_body = cache_table.find('tbody')
-    rows = table_body.find_all('tr')
+    response = requests.get(f"{CACHES_BASE_URL}/caches.json")
+    response.raise_for_status()
 
-    header = cache_table.find("thead")
-    header_cols = header.find_all('th')
-    header_texts = [ col.text.strip().lower() for col in header_cols ]
+    caches_json = response.json()
 
     oldschool_rows = []
-    for row in rows:
-        columns = row.find_all('td')
-        mapped_row = {}
 
-        for i in range(len(columns)):
-            column = columns[i]
-            header_text = header_texts[i]
-            mapped_row[header_text] = column
+    for cache in caches_json:
+        if cache.get("game") != "oldschool":
+            continue
 
-        if mapped_row["game"].text.strip().lower() == "oldschool":
-            timestamp_str = re.sub(r'\s+', '', mapped_row["timestamp"].text)
+        timestamp = datetime.fromisoformat(
+            cache["timestamp"].replace("Z", "+00:00")
+        )
 
-            if not timestamp_str:
-                continue
+        cache_id = cache["id"]
 
-            timestamp = datetime.strptime(timestamp_str,"%Y-%m-%d%H:%M:%S")
-            mapped_row["timestamp"] = timestamp
+        builds = []
+        for build in cache.get("builds", []):
+            if build["minor"] is None:
+                builds.append(str(build["major"]))
+            else:
+                builds.append(f"{build['major']}.{build['minor']}")
 
-            links_col = mapped_row["links"]
+        mapped_row = {
+            "timestamp": timestamp,
+            "links": {
+                "base": f"{CACHES_BASE_URL}/caches/runescape/{cache_id}",
+                "cache": f"{CACHES_BASE_URL}/caches/runescape/{cache_id}/disk.zip",
+                "xteas": f"{CACHES_BASE_URL}/caches/runescape/{cache_id}/keys.json",
+            },
+            "build(s)": builds
+        }
 
-            cache_link = links_col.find('a', { 'href': re.compile(r'\/caches\/runescape\/(\d+)\/disk.zip') }).get('href')
-
-            if not cache_link:
-                raise ValueError("Failed to extract cache version from HTML")
-
-            cache_idx_num = re.match(r'\/caches\/runescape\/(\d+)\/disk.zip', cache_link).group(1) 
-
-            mapped_row["links"] = {
-                "base": f"{CACHES_BASE_URL}/caches/runescape/{cache_idx_num}",
-                "cache": f"{CACHES_BASE_URL}/caches/runescape/{cache_idx_num}/disk.zip",
-                "xteas": f"{CACHES_BASE_URL}/caches/runescape/{cache_idx_num}/keys.json"
-            }
-
-            if mapped_row["build(s)"]:
-                mapped_row["build(s)"] = [build.replace(" ", "") for build in mapped_row["build(s)"].text.strip().split("\n")]
-
-            oldschool_rows.append(mapped_row)
+        oldschool_rows.append(mapped_row)
 
     return oldschool_rows
 
