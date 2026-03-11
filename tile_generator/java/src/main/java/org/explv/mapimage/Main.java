@@ -10,34 +10,32 @@ import java.util.Map;
 import java.util.function.BiConsumer;
 import javax.imageio.ImageIO;
 
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.MapImageDumper;
 import net.runelite.cache.fs.Store;
 import net.runelite.cache.region.Region;
 import net.runelite.cache.util.XteaKeyManager;
 
-import org.antlr.v4.runtime.misc.Pair;
-
-@Slf4j
 public class Main
 {
-	private static final List<Pair<String, BiConsumer<MapImageDumper, Boolean>>> mapOptions = List.of(
-		new Pair<>("renderMap", MapImageDumper::setRenderMap),
-		new Pair<>("renderObjects", MapImageDumper::setRenderObjects),
-		new Pair<>("renderIcons", MapImageDumper::setRenderIcons),
-		new Pair<>("renderWalls", MapImageDumper::setRenderWalls),
-		new Pair<>("renderOverlays", MapImageDumper::setRenderOverlays),
-		new Pair<>("renderLabels", MapImageDumper::setRenderLabels),
-		new Pair<>("transparency", MapImageDumper::setTransparency)
+	private record MapOption(String name, BiConsumer<MapImageDumper, Boolean> setter) {}
+
+	private static final List<MapOption> mapOptions = List.of(
+		new MapOption("renderMap", MapImageDumper::setRenderMap),
+		new MapOption("renderObjects", MapImageDumper::setRenderObjects),
+		new MapOption("renderIcons", MapImageDumper::setRenderIcons),
+		new MapOption("renderWalls", MapImageDumper::setRenderWalls),
+		new MapOption("renderOverlays", MapImageDumper::setRenderOverlays),
+		new MapOption("renderLabels", MapImageDumper::setRenderLabels),
+		new MapOption("transparency", MapImageDumper::setTransparency)
 	);
 
 	public static void main(String[] args) throws IOException
 	{
 		Map<String, String> cmd = parseArgs(args);
 
-		final String cacheDirectory = cmd.get("cachedir");
-		final String xteaJSONPath = cmd.get("xteapath");
-		final String outputDirectory = cmd.get("outputdir");
+		String cacheDirectory = cmd.get("cachedir");
+		String xteaJSONPath = cmd.get("xteapath");
+		String outputDirectory = cmd.get("outputdir");
 
 		if (cacheDirectory == null || xteaJSONPath == null || outputDirectory == null)
 		{
@@ -62,27 +60,25 @@ public class Main
 
 			MapImageDumper dumper = new MapImageDumper(store, xteaKeyManager);
 
-			// Apply custom render options
-			for (Pair<String, BiConsumer<MapImageDumper, Boolean>> mapOption : mapOptions)
+			for (MapOption option : mapOptions)
 			{
-				if (cmd.containsKey(mapOption.a))
+				if (cmd.containsKey(option.name()))
 				{
-					String option = cmd.get(mapOption.a);
-					boolean value = Boolean.parseBoolean(option);
-					mapOption.b.accept(dumper, value);
+					boolean value = Boolean.parseBoolean(cmd.get(option.name()));
+					option.setter().accept(dumper, value);
 				}
 			}
 
 			dumper.load();
 
-			for (int i = 0; i < Region.Z; ++i)
+			for (int i = 0; i < Region.Z; i++)
 			{
 				BufferedImage image = dumper.drawMap(i);
 
 				File imageFile = new File(outDir, "img-" + i + ".png");
 
 				ImageIO.write(image, "png", imageFile);
-				log.info("Wrote image {}", imageFile);
+				System.out.println("Wrote image " + imageFile);
 			}
 		}
 	}
